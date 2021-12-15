@@ -1,0 +1,47 @@
+{
+    "manifestVersion": 1,
+    "id": "makecert",
+    "version": "1.0.0",
+    "name": "Make a Self-signed Certificate",
+    "description": "Task for creating a RSA key and a self-signed custom certificate for it on a target machine",
+    "publisher": "sevaalekseyev",
+    "targets": [{"id": "Microsoft.VisualStudio.Services"}],
+    "categories": ["Azure Pipelines"],
+    "tags": ["pipeline","certificate","cert","crypto","cryptography","pki","rsa","build", "release"],
+    "repository":
+    {
+        "type": "git",
+        "uri": "https://github.com/sevaa/makecert/"
+    },
+    "links":
+    {
+        "support": {"uri": "https://github.com/sevaa/makecert/issues"},
+        "repository": {"uri": "https://github.com/sevaa/makecert/"}
+    },    
+    "icons": {"default": "img/logo.png"},
+    "galleryFlags": ["Public"],
+    "content":
+    {
+        "details": { "path" : "readme.md" },
+        "license": {"path": "license.md"},
+        "privacypolicy": {"path": "privacy.md"}
+    },
+    "contributions":
+    [
+        {
+            "id": "makecert",
+            "type": "ms.vss-distributed-task.task",
+            "targets": ["ms.vss-distributed-task.tasks"],
+            "properties": { "name": "MakeCert" }
+        }
+    ],
+    "files":
+    [
+        {"path": "MakeCert"},
+        {"path": "img", "addressable": true}
+    ],
+    "scopes": [],
+    "contributionTypes": []
+}
+
+
