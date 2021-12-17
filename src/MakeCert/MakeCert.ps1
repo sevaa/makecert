@@ -74,9 +74,9 @@ if($SAN -ne "")
             if($a.Length -eq 2)
             {
                 if($a[0] -eq 'DNS') { $SANLines += "d"+$a[1]}
-                elseif($a[0] -eq 'IP') { $SANLines += "d"+$a[1]}
-                elseif($a[0] -eq 'URI') { $SANLines += "u"+$a[1]}
                 elseif($a[0] -eq 'Email') { $SANLines += "e"+$a[1]}
+                elseif($a[0] -eq 'IP') { $SANLines += "i"+$a[1]}
+                elseif($a[0] -eq 'URI') { $SANLines += "u"+$a[1]}
                 elseif($a[0] -eq 'Name') { $SANLines += "n"+$a[1]}
                 else {Write-Warning "SAN line ignored, unknown type: $s"}
             }
