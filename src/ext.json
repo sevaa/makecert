@@ -1,7 +1,7 @@
 {
     "manifestVersion": 1,
     "id": "makecert",
-    "version": "1.0.0",
+    "version": "1.10.0",
     "name": "Make a Self-signed Certificate",
     "description": "Task for creating a RSA key and a self-signed custom certificate for it on a target machine",
     "publisher": "sevaalekseyev",

@@ -8,8 +8,8 @@
     "author": "Seva Alekseyev",
     "version":
     {
-        "Major": 1,
-        "Minor": 10,
+        "Major": 2,
+        "Minor": 0,
         "Patch":0
     },
     "demands": [],
@@ -108,7 +108,15 @@
             "defaultValue": "false",
             "helpMarkDown": "Leave unchecked if the private key is not expected to leave the target machine.",
             "groupName": "key"
-        },        
+        },
+        {
+            "name": "Permissions",
+            "type": "multiLine",
+            "label": "Extra permissions:",
+            "required": false,
+            "helpMarkDown": "Users who should be granted access to the private key, in addition to the default SYSTEM and Administrators.\nEach line should contain a username (presumed local on the target server), or a domain\\username, or a [two letter code for a well known SID](https://docs.microsoft.com/en-us/windows/win32/secauthz/sid-strings). Prepend a line with a * for read-only access, otherwise full control will be granted.",
+            "groupName": "key"
+        },                 
 
         {
             "name": "KUKE",

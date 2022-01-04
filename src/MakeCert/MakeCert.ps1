@@ -10,6 +10,7 @@ param
 
     [string]$Length,
     [string]$Exportable,
+    [string]$Permissions,
 
     [string]$KUKE, [string]$KUDE, [string]$KUDS, [string]$KUKCS, [string]$KUKA, [string]$KUCS, [string]$KUNR, [string]$KUEO, [string]$KUDO, [string]$KUCritical,
     [string]$EKUSA, [string]$EKUCA, [string]$EKUCS, [string]$EKUExtra, [string]$EKUCritical,
@@ -86,6 +87,29 @@ if($SAN -ne "")
     }
 }
 
+$ACEs = @()
+if($Permissions -ne "")
+{
+    foreach($User in $Permissions -split "`r`n")
+    {
+        $s = $User.Trim()
+        if($s -ne "")
+        {
+            if($s[0] -eq "*") # Read only
+            {
+                $Rights = "0x80120089"
+                $s = $s.Substring(1)
+            }
+            else # Full control
+            {
+                $Rights = "0xd01f01ff"
+            }
+            $a = $s -split "\\"
+            $ACEs += @{DomainUser=$a; Rights=$Rights}
+        }
+    }
+}
+
 $Cmds = {
     $Params = $args[0]
     $KeyLength = $Params["KeyLength"]
@@ -101,6 +125,7 @@ $Cmds = {
     $FriendlyName = $Params["FriendlyName"]
     $StoreName = $Params["StoreName"]
     $UseUserStore = $Params["UseUserStore"]
+    $ACEs = $Params["ACEs"]
 
     # Create a RSA key pair
     $KeyParams = New-Object System.Security.Cryptography.CngKeyCreationParameters
@@ -116,6 +141,47 @@ $Cmds = {
     
     $KeyProp = New-Object System.Security.Cryptography.CngProperty -ArgumentList "Length",$KeyLength,0
     $KeyParams.Parameters.Add($KeyProp)
+
+    # Extra permissions
+    $WellKnownSIDs = @("AA","AC","AN","AO","AP","AU","BA","BG","BO","BU","CA","CD","CG","CN","CO","CY",
+        "DA","DC","DD","DG","DU","EA","ED","EK","ER","ES","HA","HI","IS","IU","KA","LA","LG","LS","LU",
+        "LW","ME","MP","MU","NO","NS","NU","OW","PA","PO","PS","PU","RA","RC","RD","RE","RM","RO","RS",
+        "RU","SA","SI","SO","SS","SU","SY","UD","WD","WR")
+    # Source: https://docs.microsoft.com/en-us/windows/win32/secauthz/sid-strings
+    if($ACEs.Length -gt 0)
+    {
+        $DACL = ("(A;OICI;0xd01f01ff;;;SY)","(A;OICI;0xd01f01ff;;;BA)")
+        foreach($ACE in $ACEs)
+        {
+            if($ACE.DomainUser -in $WellKnownSIDs)
+            {
+                $SID = $ACE.DomainUser
+                Write-Host $SID
+            }
+            else
+            {
+                try
+                {
+                    $User = New-Object System.Security.Principal.NTAccount -ArgumentList $ACE.DomainUser
+                    $SID = $User.Translate([System.Security.Principal.SecurityIdentifier]).Value
+                }
+                catch
+                {
+                    $User = $ACE.DomainUser -join "\"
+                    Write-Error "Error retrieving the user record for ${User}" 
+                    exit 1
+                }
+            }
+            $Rights = $ACE.Rights
+            $DACL += "(A;OICI;${Rights};;;${SID})"
+        }
+        $SDDL = "D:" + ($DACL -join "")
+        $SecDesc = New-Object System.Security.AccessControl.RawSecuritydescriptor -ArgumentList $SDDL
+        $SecDescData = [byte[]]::new($SecDesc.BinaryLength)
+        $SecDesc.GetBinaryForm($SecDescData, 0)
+        $KeyProp = New-Object System.Security.Cryptography.CngProperty -ArgumentList "Security Descr",$SecDescData,4
+        $KeyParams.Parameters.Add($KeyProp)
+    }
     
     $AlgName = [System.Security.Cryptography.CngAlgorithm]::Rsa
     $KeyPair = [System.Security.Cryptography.CngKey]::Create($AlgName, $KeyName, $KeyParams)
@@ -210,13 +276,14 @@ $Params = @{KeyLength = $KeyLength;
     ExpirationDays = $ExpirationDays;
     FriendlyName = $FriendlyName;
     StoreName = $StoreName;
-    UseUserStore = $false}
+    UseUserStore = $false;
+    ACEs = $ACEs}
 
 if($Server)
 {   
-     Invoke-Command -ComputerName $Server -ScriptBlock $Cmds -ArgumentList $Params
+    Invoke-Command -ComputerName $Server -ScriptBlock $Cmds -ArgumentList $Params
 }
 else
 {
-        Invoke-Command -ScriptBlock $Cmds -ArgumentList $Params
+    Invoke-Command -ScriptBlock $Cmds -ArgumentList $Params
 }
