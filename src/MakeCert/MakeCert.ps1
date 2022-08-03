@@ -2,10 +2,12 @@
 param
 (
     [string]$Server,
+    [string]$TargetType,
 
     [string]$DN,
     [string]$Lifetime,
     [string]$FriendlyName,
+    [string]$Description,
     [string]$SAN,
 
     [string]$Length,
@@ -14,7 +16,9 @@ param
 
     [string]$KUKE, [string]$KUDE, [string]$KUDS, [string]$KUKCS, [string]$KUKA, [string]$KUCS, [string]$KUNR, [string]$KUEO, [string]$KUDO, [string]$KUCritical,
     [string]$EKUSA, [string]$EKUCA, [string]$EKUCS, [string]$EKUExtra, [string]$EKUCritical,
-    [string]$StoreName
+    [string]$BCPresent, [string]$BCIsAuthority, [string]$BCPathLength, [string]$BCCritical,
+    [string]$StoreName,
+    [string]$CSRFileName
 )
 
 if($Server)
@@ -110,8 +114,29 @@ if($Permissions -ne "")
     }
 }
 
+if($BCPresent -eq "true")
+{
+    $HasPath = ($BCPathLength -ne "")
+    if($HasPath)
+    {
+        [int]$PathLen = $BCPathLength
+    }
+    else
+    {
+        [int]$PathLen = 0
+    }
+    $IsAuth = $BCIsAuthority -eq "true"
+    $Crit = $BCCritical -eq "true"
+    $BCParams = $IsAuth,$HasPath,$PathLen,$Crit
+}
+else
+{
+    $BCParams = $False
+}
+
 $Cmds = {
     $Params = $args[0]
+    $MakeCSR = $Params["MakeCSR"]
     $KeyLength = $Params["KeyLength"]
     $KeyName = $Params["KeyName"]
     $DN = $Params["DN"]
@@ -121,11 +146,14 @@ $Cmds = {
     $EKUIsCritical = $Params["EKUIsCritical"]
     $ExtUsage = $Params["ExtUsage"]
     $SANLines = $Params["SANLines"]
+    $BCParams = $Params["BCParams"]
     $ExpirationDays = $Params["ExpirationDays"]
     $FriendlyName = $Params["FriendlyName"]
+    $Description = $Params["Description"]
     $StoreName = $Params["StoreName"]
     $UseUserStore = $Params["UseUserStore"]
     $ACEs = $Params["ACEs"]
+    $CSRFileName = $Params["CSRFileName"]
 
     # Create a RSA key pair
     $KeyParams = New-Object System.Security.Cryptography.CngKeyCreationParameters
@@ -233,12 +261,36 @@ $Cmds = {
         $Exts.Add($SANBuilder.Build())
     }
 
-    # Create a self signed cert
-    $Cert = $Request.CreateSelfSigned([DateTimeOffset]::UtcNow, [DateTimeOffset]::UtcNow.AddDays($ExpirationDays))
+    # Subject Key Identifier
+    $PubKey = $Request.PublicKey
+    $Ext = New-Object System.Security.Cryptography.X509Certificates.X509SubjectKeyIdentifierExtension -ArgumentList $PubKey,$false
+    $Exts.Add($Ext)
+    
+    # Basic Constraints
+    if($BCParams)
+    {
+        $Ext = New-Object System.Security.Cryptography.X509Certificates.X509BasicConstraintsExtension -ArgumentList $BCParams
+        $Exts.Add($Ext)
+    }
+
+    # Friendly Name
     if($FriendlyName -ne "")
     {
-        $Cert.FriendlyName = $FriendlyName
+        $Value = [System.Text.Encoding]::Unicode.GetBytes($FriendlyName + "`0")
+        $Ext = New-Object System.Security.Cryptography.X509Certificates.X509Extension -ArgumentList "1.3.6.1.4.1.311.10.11.11",$Value,$false
+        $Exts.Add($Ext)
     }
+
+    # Description
+    if($Description -ne "")
+    {
+        $Value = [System.Text.Encoding]::Unicode.GetBytes($Description + "`0")
+        $Ext = New-Object System.Security.Cryptography.X509Certificates.X509Extension -ArgumentList "1.3.6.1.4.1.311.10.11.13",$Value,$false
+        $Exts.Add($Ext)
+    }    
+
+    # Create a self signed cert (needed for CSR too)
+    $Cert = $Request.CreateSelfSigned([DateTimeOffset]::UtcNow, [DateTimeOffset]::UtcNow.AddDays($ExpirationDays))
     if($UseUserStore)
     {
         $Location = [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
@@ -247,24 +299,44 @@ $Cmds = {
     {
         $Location = [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine
     }
+    if($MakeCSR)
+    {
+        $StoreName = "REQUEST"
+    }
     $Store = New-Object System.Security.Cryptography.X509Certificates.X509Store -ArgumentList $StoreName,$Location
     $RW = [System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite
     $Store.Open($RW)
     $Store.Add($Cert)
     $Store.Close()
 
-    # Display the public parts of the cert 
-    $Thumbprint = $Cert.Thumbprint
-    Write-Host "Thumbprint: $Thumbprint"
-    #There is a class PemEncoding, but not in all flavors of .NET
     $Flags = [Base64FormattingOptions]::InsertLineBreaks
-    $CertInPEM = "Save the following as a .CER file:`n`n-----BEGIN CERTIFICATE-----`n" + [Convert]::ToBase64String($Cert.GetRawCertData(), $Flags) +"`n-----END CERTIFICATE-----"
-    Write-Host $CertInPEM
+    #There is a class PemEncoding, but not in all flavors of .NET
+    if($MakeCSR)
+    {
+        $CSRData = $Request.CreateSigningRequest()
+        $CSRDataInPEM = [Convert]::ToBase64String($CSRData, $Flags)
+        $CSRInPEM = "-----BEGIN NEW CERTIFICATE REQUEST-----`r`n" + $CSRDataInPEM + "`r`n-----END NEW CERTIFICATE REQUEST-----"
+        Write-Host "Send the the following to a certification authority:`n`n$CSRInPEM"
+        if($CSRFileName -ne "")
+        {
+            $CSRInPEM | Set-Content $CSRFileName -Encoding ASCII
+            Write-Host "Saved the CSR to $CSRFileName on $env:COMPUTERNAME."
+        }
+    }
+    else
+    {
+        # Display the public parts of the cert 
+        $Thumbprint = $Cert.Thumbprint
+        Write-Host "Thumbprint: $Thumbprint"
+        $CertInPEM = "Save the following as a .CER file:`n`n-----BEGIN CERTIFICATE-----`n" + [Convert]::ToBase64String($Cert.GetRawCertData(), $Flags) +"`n-----END CERTIFICATE-----"
+        Write-Host $CertInPEM
+    }
 
     $Cert.Dispose()
 }
 
-$Params = @{KeyLength = $KeyLength;
+$Params = @{MakeCSR = $TargetType -eq "CSR";
+    KeyLength = $KeyLength;
     KeyName = $KeyName;
     DN = $DN;
     Exportable = $Exportable;
@@ -273,11 +345,14 @@ $Params = @{KeyLength = $KeyLength;
     EKUIsCritical = $EKUIsCritical;
     ExtUsage = $ExtUsage;
     SANLines = $SANLines;
+    BCParams = $BCParams;
     ExpirationDays = $ExpirationDays;
     FriendlyName = $FriendlyName;
+    Description = $Description;
     StoreName = $StoreName;
     UseUserStore = $false;
-    ACEs = $ACEs}
+    ACEs = $ACEs;
+    CSRFileName = $CSRFileName}
 
 if($Server)
 {   

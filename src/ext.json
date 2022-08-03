@@ -1,9 +1,9 @@
 {
     "manifestVersion": 1,
     "id": "makecert",
-    "version": "1.10.0",
-    "name": "Make a Self-signed Certificate",
-    "description": "Task for creating a RSA key and a self-signed custom certificate for it on a target machine",
+    "version": "1.30.0",
+    "name": "Make a Self-signed Certificate or a CSR",
+    "description": "Task for creating an RSA key and either a certificate request for an authority (CSR), or a self-signed custom certificate for it on a target machine",
     "publisher": "sevaalekseyev",
     "targets": [{"id": "Microsoft.VisualStudio.Services"}],
     "categories": ["Azure Pipelines"],
